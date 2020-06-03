@@ -67,7 +67,6 @@ def main():
         print_answers(get_answer(sslsock), True)
         username = base64.b64encode(input()
                                     .encode('utf-8')).decode('utf-8')
-        print(username)
         send_msg(sslsock, username)
 
         print_answers(get_answer(sslsock), True)
@@ -81,24 +80,39 @@ def main():
         print_answers(get_answer(sslsock))
         next = input()
         while next != '.':
-            print('sasamba')
             send_msg(sslsock, f'rcpt to: <{next}>')
             print_answers(get_answer(sslsock))
             next = input()
+        with open('image.jpg', 'rb') as image:
+            encoded_string = base64.b64encode(image.read()).decode('utf-8')
         send_msg(sslsock, 'data')
         print_answers(get_answer(sslsock))
         send_msg(sslsock,
-                 '''From: <belyaevnp@gmail.com>
-To: <example@example.com>
-Subject: test
+                 f'''From: BIBANIUM <e@mail>
+To: BOBINIUM <e@mail>
+Subject: BIBA
+Date: Fri, 26 Mar 2020 09:00:00 GMT+5
+Content-Type: multipart/related; boundary=bound
 
-This is test mail
-Sent from python script
+
+--bound
+Content-Type: text/html; charset=utf-8
+
+<img src="cid:10"><br> 
+
+--bound
+Content-Type: image/jpg
+Content-Transfer-Encoding: base64
+Content-disposition:attachment; filename="python.jpg"
+Content-Id: 10
+
+{encoded_string}
+
+--bound--
+
 \r\n.\r\n''')
-        print('sas')
         print_answers(get_answer(sslsock))
         send_msg(sslsock, 'QUIT')
-        print('sass')
     sock.close()
 
 
