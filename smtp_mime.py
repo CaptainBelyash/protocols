@@ -95,7 +95,7 @@ Content-Type: multipart/mixed; boundary=bound
 
 '''
     for ext in image_exts:
-        image_files.extend(glob.glob(f'{directory}*.{ext}'))
+        image_files.extend(glob.glob(f'{directory}\*.{ext}'))
     for image_file in image_files:
         filename, fileext = os.path.splitext(image_file)
         fileext = fileext[1:]
