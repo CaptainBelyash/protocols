@@ -12,7 +12,6 @@ from getpass import getpass
 image_exts = ['gif', 'png', 'jpeg', 'jpg']
 image_files = []
 
-context = ssl.create_default_context()
 verbosel = False
 
 
@@ -22,45 +21,12 @@ class ServerAnswer:
         self.msg = msg
 
 
-def get_answer(sock):
-    data = sock.recv(1024)\
-        .decode('utf-8')\
-        .splitlines()
-    answer = list(map(lambda x: ServerAnswer(x[:3], x[4:]),
-                      data))
-    return answer
-
-
-def print_answers(answers, inbase64=False):
-    for answer in answers:
-        if answer.code[0] in {'4', '5'}:
-            print(answer.code, answer.msg, file=sys.stderr)
-            raise Exception
-        if inbase64:
-            if verbosel:
-                print(answer.code,
-                      base64
-                      .b64decode(answer.msg)
-                      .decode('utf-8'))
-        else:
-            if verbosel:
-                print(answer.code, answer.msg)
-
-    if verbosel:
-        print()
-
-
-def send_msg(sock, msg):
-    msg += '\n'
-    sock.send(msg.encode('utf-8'))
-
-
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--ssl', default=False, type=bool,
                         help='разрешить использование ssl, если сервер '
                              'поддерживает (по умолчанию не использовать)')
-    parser.add_argument('-s', '--serve',
+    parser.add_argument('-s', '--server',
                         help='адрес (или доменное имя) SMTP-сервера в формате '
                              'адрес[:порт] (порт по умолчанию 25)',
                         required=True)
@@ -81,10 +47,9 @@ def main():
                         help='Каталог с изображениями (по умолчанию $pwd)')
 
     args = parser.parse_args().__dict__
-    verbosel = args['verbosel']
     message = make_message(args['from'], args['to'], args['subject'], args['directory'])
-    smtp_client(message, args['serve'], args['from'],
-                args['to'], args['ssl'], args['auth'])
+    smtp_client = SMTPClient(message, args['server'], args['from'],
+                             args['to'], args['ssl'], args['auth'], args['verbosel'])
 
 
 def make_message(msg_from, msg_to, subject, directory):
@@ -116,60 +81,121 @@ Content-disposition:attachment; filename="{filename}.{fileext}"
     return message
 
 
-def smtp_client(message, smtp_server, msg_from, msg_to, use_ssl, use_auth):
-    old_sock = None
-    host_name = smtp_server
-    host_port = 25
-    if ':' in smtp_server:
-        host_name, host_port = host_name.split(':')
-        host_port = int(host_port)
-    sock = socket.socket()
-    sock.connect((host_name, host_port))
+class SMTPClient:
+    def __init__(self, message,
+                 smtp_server_name, sender,
+                 recipient, use_ssl,
+                 use_auth, verbosel):
+        self.message = message
+        self.host_name = smtp_server_name
+        self.host_port = 25
+        self.parse_server_name(smtp_server_name)
 
-    print_answers(get_answer(sock))
+        self.verbosel = verbosel
+        self.use_ssl = use_ssl
+        self.use_auth = use_auth
 
-    send_msg(sock, 'EHLO x')
-    print_answers(get_answer(sock))
+        self.sock = None
+        self.ssl_sock = None
+        self.main_sock = None
+        self.context = ssl.create_default_context()
 
+        self.sender = sender
+        self.recipient = recipient
 
-    if use_ssl:
-        send_msg(sock, 'STARTTLS')
-        print_answers(get_answer(sock))
-        old_sock = sock
-        sock = context.wrap_socket(sock,
-                             server_hostname=host_name)
-    send_msg(sock, 'EHLO x')
-    print_answers(get_answer(sock))
-    if use_auth:
-        send_msg(sock, 'AUTH LOGIN')
+        self.start()
 
-        print_answers(get_answer(sock), True)
+    def start(self):
+        self.sock = socket.socket()
+        self.sock.connect((self.host_name, self.host_port))
+        self.main_sock = self.sock
+
+        self.print_answers(self.get_answer())
+
+        self.send_msg('EHLO x')
+        self.print_answers(self.get_answer())
+
+        if self.use_ssl:
+            self.start_ssl()
+
+        if self.use_auth:
+            self.authorization()
+
+        self.send_msg(f'mail from: <{self.sender}>')
+        self.print_answers(self.get_answer())
+        self.send_msg(f'rcpt to: <{self.recipient}>')
+        self.print_answers(self.get_answer())
+
+        self.send_msg('data')
+        self.print_answers(self.get_answer())
+        self.send_msg(self.message)
+        self.print_answers(self.get_answer())
+        self.send_msg('QUIT')
+        if self.ssl_sock:
+            self.ssl_sock.close()
+        self.sock.close()
+
+    def start_ssl(self):
+        self.send_msg('STARTTLS')
+        self.print_answers(self.get_answer())
+
+        self.ssl_sock = self.context.wrap_socket(self.sock,
+                                                 server_hostname=self.host_name)
+        self.main_sock = self.ssl_sock
+        self.send_msg('EHLO x')
+        self.print_answers(self.get_answer())
+
+    def authorization(self):
+        self.send_msg('AUTH LOGIN')
+
+        self.print_answers(self.get_answer(), True)
         print('Login:', end=' ')
         username = base64.b64encode(input()
                                     .encode('utf-8')).decode('utf-8')
-        send_msg(sock, username)
+        self.send_msg(username)
 
-        print_answers(get_answer(sock), True)
+        self.print_answers(self.get_answer(), True)
         password = getpass()
         password = base64.b64encode(password
                                     .encode('utf-8'))\
             .decode('utf-8')
-        send_msg(sock, password)
-        print_answers(get_answer(sock))
+        self.send_msg(password)
+        self.print_answers(self.get_answer())
 
-    send_msg(sock, f'mail from: <{msg_from}>')
-    print_answers(get_answer(sock))
-    send_msg(sock, f'rcpt to: <{msg_to}>')
-    print_answers(get_answer(sock))
+    def parse_server_name(self, server_name):
+        if ':' in server_name:
+            self.host_name, self.host_port = server_name.split(':')
+            self.host_port = int(self.host_port)
 
-    send_msg(sock, 'data')
-    print_answers(get_answer(sock))
-    send_msg(sock, message)
-    print_answers(get_answer(sock))
-    send_msg(sock, 'QUIT')
-    if old_sock:
-        old_sock.close()
-    sock.close()
+    def get_answer(self):
+        data = self.main_sock.recv(1024) \
+            .decode('utf-8') \
+            .splitlines()
+        answer = list(map(lambda x: ServerAnswer(x[:3], x[4:]),
+                          data))
+        return answer
+
+    def print_answers(self, answers, inbase64=False):
+        for answer in answers:
+            if answer.code[0] in {'4', '5'}:
+                print(answer.code, answer.msg, file=sys.stderr)
+                raise Exception
+            if inbase64:
+                if self.verbosel:
+                    print(answer.code,
+                          base64
+                          .b64decode(answer.msg)
+                          .decode('utf-8'))
+            else:
+                if verbosel:
+                    print(answer.code, answer.msg)
+
+        if verbosel:
+            print()
+
+    def send_msg(self, msg):
+        msg += '\n'
+        self.main_sock.send(msg.encode('utf-8'))
 
 
 if __name__ == '__main__':
