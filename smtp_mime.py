@@ -131,10 +131,10 @@ def smtp_client(message, smtp_server, msg_from, msg_to, use_ssl, use_auth):
     send_msg(sock, 'EHLO x')
     print_answers(get_answer(sock))
 
-    send_msg(sock, 'STARTTLS')
-    print_answers(get_answer(sock))
 
     if use_ssl:
+        send_msg(sock, 'STARTTLS')
+        print_answers(get_answer(sock))
         old_sock = sock
         sock = context.wrap_socket(sock,
                              server_hostname=host_name)
