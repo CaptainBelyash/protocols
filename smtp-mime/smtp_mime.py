@@ -43,7 +43,7 @@ def main():
                         help='Запрос авторизации (по умолчанию нет)')
     parser.add_argument('-v', '--verbosel', default=False, type=bool,
                         help='Отображение протокола работы (по умолчанию нет)')
-    parser.add_argument('-d', '--directory', default='',
+    parser.add_argument('-d', '--directory', default='.',
                         help='Каталог с изображениями (по умолчанию $pwd)')
 
     args = parser.parse_args().__dict__
@@ -60,7 +60,7 @@ Content-Type: multipart/mixed; boundary=bound
 
 '''
     for ext in image_exts:
-        image_files.extend(glob.glob(f'{directory}\*.{ext}'))
+        image_files.extend(glob.glob(f'{directory}/*.{ext}'))
     for image_file in image_files:
         filename, fileext = os.path.splitext(image_file)
         fileext = fileext[1:]

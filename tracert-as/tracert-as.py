@@ -35,7 +35,7 @@ class PacketICMP:
 
 class WhoIS:
     @staticmethod
-    def whois( ip, host='whois.iana.org'):
+    def whois(ip, host='whois.iana.org'):
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
             sock.settimeout(5.0)
             sock.connect((host, 43))
@@ -48,6 +48,7 @@ class WhoIS:
             except AttributeError:
                 try:
                     host = WHOIS.search(data).group(0)
+                    print(host)
                 except AttributeError:
                     return 'local'
                 return WhoIS.whois(ip, host)
@@ -64,7 +65,7 @@ class WhoIS:
                 data += raw_data
             except socket.timeout:
                 return
-        return data.decode()
+        return data.decode(errors='replace')
 
     @staticmethod
     def get_info(data):
