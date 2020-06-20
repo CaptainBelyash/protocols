@@ -48,7 +48,6 @@ class WhoIS:
             except AttributeError:
                 try:
                     host = WHOIS.search(data).group(0)
-                    print(host)
                 except AttributeError:
                     return 'local'
                 return WhoIS.whois(ip, host)

@@ -15,6 +15,15 @@ image_files = []
 verbosel = False
 
 
+class AnswerException(Exception):
+    def __init__(self, code, message):
+        self.code = code
+        self.message = message
+
+    def addMsg(self, message):
+        self.message += f'\n{message}'
+
+
 class ServerAnswer:
     def __init__(self, code, msg):
         self.code = code
@@ -53,9 +62,11 @@ def main():
 
 
 def make_message(msg_from, msg_to, subject, directory):
+    subject = base64.b64encode(subject
+                               .encode('utf-8')).decode('utf-8')
     message = f'''From: <{msg_from}>
 To: <{msg_to}>
-Subject: {subject}
+Subject: =?utf-8?B?{subject}?=
 Content-Type: multipart/mixed; boundary=bound
 
 '''
@@ -176,10 +187,14 @@ class SMTPClient:
         return answer
 
     def print_answers(self, answers, inbase64=False):
+        exc = None
         for answer in answers:
+            if exc:
+                exc.addMsg(answer.msg)
+                continue
             if answer.code[0] in {'4', '5'}:
-                print(answer.code, answer.msg, file=sys.stderr)
-                raise Exception
+                print(f'{answer.code} {answer.msg}', file=sys.stderr)
+                exc = AnswerException(answer.code, answer.msg)
             if inbase64:
                 if self.verbosel:
                     print(answer.code,
@@ -193,11 +208,16 @@ class SMTPClient:
         if verbosel:
             print()
 
+        if exc:
+            raise exc
+
     def send_msg(self, msg):
         msg += '\n'
         self.main_sock.send(msg.encode('utf-8'))
 
 
 if __name__ == '__main__':
-    main()
-
+    try:
+        main()
+    except AnswerException as exception:
+        print(f'{exception.code} {exception.message}')
